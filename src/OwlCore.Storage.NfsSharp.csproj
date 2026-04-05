@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net9.0;net8.0;netstandard2.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+
+    <!-- NuGet package metadata -->
+    <PackageId>OwlCore.Storage.NfsSharp</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>itsWindows11</Authors>
+    <Company>OwlCore.Storage.NfsSharp</Company>
+    <Product>OwlCore.Storage.NfsSharp</Product>
+    <Description>An OwlCore.Storage-based library that provides a full-featured implementation for the NFS file system, built on top of NfsSharp.</Description>
+    <Summary>OwlCore.Storage implementation for NFS, built on NfsSharp.</Summary>
+    <PackageTags>nfs;network-file-system;owlcore;storage;nfsclient;nfssharp</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/itsWindows11/OwlCore.Storage.NfsSharp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/itsWindows11/OwlCore.Storage.NfsSharp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Copyright>Copyright © 2026 itsWindows11</Copyright>
+    <PackageReleaseNotes>
+      [0.1.0]
+      Initial release with full NFS filesystem implementation via OwlCore.Storage abstractions.
+    </PackageReleaseNotes>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageReference Include="NfsSharp" Version="0.1.1" />
+    <PackageReference Include="OwlCore.Storage" Version="0.13.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="PolySharp" Version="1.14.1"
+                      PrivateAssets="All"
+                      IncludeAssets="runtime;build;native;contentfiles;analyzers" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>
