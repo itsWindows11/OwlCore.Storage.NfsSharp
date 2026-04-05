@@ -1,4 +1,3 @@
-using NfsSharp;
 using NfsSharp.Protocol;
 
 namespace OwlCore.Storage.NfsSharp;
@@ -6,27 +5,24 @@ namespace OwlCore.Storage.NfsSharp;
 /// <summary>
 /// An <see cref="IChildFile"/> implementation backed by a file on an NFS server.
 /// </summary>
-public partial class NfsFile : IChildFile
+public partial class NfsFile : IChildFile, IHasNfsFileAttributes
 {
-    internal readonly NfsClient _nfsClient;
+    internal readonly INfsClient _nfsClient;
 
     /// <summary>
     /// Initializes a new instance of <see cref="NfsFile"/>.
     /// </summary>
     /// <param name="nfsClient">The NFS client to use for file operations.</param>
     /// <param name="path">The absolute path of the file within the NFS export (e.g. <c>/reports/q4.csv</c>).</param>
-    /// <param name="attributes">The file attributes, if already known. May be <see langword="null"/>.</param>
-    public NfsFile(NfsClient nfsClient, string path, NfsFileAttributes? attributes = null)
+    /// <param name="cachedAttributes">Already-fetched NFS attributes, if available. When non-<see langword="null"/> the first call to <see cref="GetFileAttributesAsync"/> returns immediately without a network round-trip.</param>
+    public NfsFile(INfsClient nfsClient, string path, NfsFileAttributes? cachedAttributes = null)
     {
         _nfsClient = nfsClient;
         Path = path;
-        Attributes = attributes;
+        _cachedAttributes = cachedAttributes;
     }
 
-    /// <summary>
-    /// Gets the last-known NFS file attributes for this file, if available.
-    /// </summary>
-    public NfsFileAttributes? Attributes { get; }
+    private NfsFileAttributes? _cachedAttributes;
 
     /// <summary>
     /// Gets the full NFS path of this file (e.g. <c>/reports/q4.csv</c>).
@@ -40,6 +36,13 @@ public partial class NfsFile : IChildFile
     public string Name => global::System.IO.Path.GetFileName(Path);
 
     /// <inheritdoc/>
+    public async Task<IStorageProperty<NfsFileAttributes>> GetFileAttributesAsync(CancellationToken cancellationToken = default)
+    {
+        _cachedAttributes ??= await _nfsClient.GetAttrAsync(Path, cancellationToken);
+        return new StorageProperty<NfsFileAttributes>(_cachedAttributes);
+    }
+
+    /// <inheritdoc/>
     public async Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
     {
         var parentPath = NfsHelpers.GetParentPath(Path);
@@ -47,8 +50,7 @@ public partial class NfsFile : IChildFile
         if (parentPath is null)
             return null;
 
-        var attrs = await _nfsClient.GetAttrAsync(parentPath, cancellationToken);
-        return new NfsFolder(_nfsClient, parentPath, attrs);
+        return new NfsFolder(_nfsClient, parentPath);
     }
 
     /// <inheritdoc/>
@@ -57,13 +59,6 @@ public partial class NfsFile : IChildFile
         if (accessMode is not (FileAccess.Read or FileAccess.Write or FileAccess.ReadWrite))
             throw new ArgumentOutOfRangeException(nameof(accessMode));
 
-        // NfsStream derives from Stream, but Task<NfsStream> is not assignable to Task<Stream>
-        // (generics are invariant in C#). ContinueWith performs the widening without a state machine.
-        return _nfsClient.OpenFileAsync(Path, accessMode, create: false, cancellationToken)
-            .ContinueWith(
-                static t => (Stream)t.GetAwaiter().GetResult(),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+        return _nfsClient.OpenStreamAsync(Path, accessMode, create: false, cancellationToken);
     }
 }

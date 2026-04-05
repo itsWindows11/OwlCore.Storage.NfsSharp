@@ -1,0 +1,49 @@
+# NuGet publishing workflow
+# - Uses NuGet trusted publishing via OIDC token exchange (NuGet/login@v1).
+# - Obtains a short-lived API key and uses it for dotnet nuget push.
+# - Triggered on version tags: v*.
+
+name: Publish to NuGet
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore src/OwlCore.Storage.NfsSharp.csproj
+
+      - name: Build
+        run: dotnet build src/OwlCore.Storage.NfsSharp.csproj -c Release --no-restore
+
+      - name: Pack
+        run: dotnet pack src/OwlCore.Storage.NfsSharp.csproj -c Release --no-build -o ./artifacts
+
+      - name: NuGet login (OIDC -> temp API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: itsWindows11
+
+      - name: Push NuGet package
+        run: dotnet nuget push ./artifacts/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --skip-duplicate
+
+      - name: Push symbol package
+        run: dotnet nuget push ./artifacts/*.snupkg --source https://api.nuget.org/v3/index.json --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --skip-duplicate

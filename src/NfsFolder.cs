@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using NfsSharp;
 using NfsSharp.Protocol;
 
 namespace OwlCore.Storage.NfsSharp;
@@ -14,27 +13,25 @@ public partial class NfsFolder :
     IGetFirstByName,
     IGetItemRecursive,
     ICreateRenamedCopyOf,
-    IMoveRenamedFrom
+    IMoveRenamedFrom,
+    IHasNfsFileAttributes
 {
-    internal readonly NfsClient _nfsClient;
+    internal readonly INfsClient _nfsClient;
 
     /// <summary>
     /// Initializes a new instance of <see cref="NfsFolder"/>.
     /// </summary>
     /// <param name="nfsClient">The NFS client to use for folder operations.</param>
     /// <param name="path">The absolute path of the folder within the NFS export (e.g. <c>/reports</c> or <c>/</c> for root).</param>
-    /// <param name="attributes">The folder attributes, if already known. May be <see langword="null"/>.</param>
-    public NfsFolder(NfsClient nfsClient, string path, NfsFileAttributes? attributes = null)
+    /// <param name="cachedAttributes">Already-fetched NFS attributes, if available. When non-<see langword="null"/> the first call to <see cref="GetFileAttributesAsync"/> returns immediately without a network round-trip.</param>
+    public NfsFolder(INfsClient nfsClient, string path, NfsFileAttributes? cachedAttributes = null)
     {
         _nfsClient = nfsClient;
         Path = path;
-        Attributes = attributes;
+        _cachedAttributes = cachedAttributes;
     }
 
-    /// <summary>
-    /// Gets the last-known NFS file attributes for this folder, if available.
-    /// </summary>
-    public NfsFileAttributes? Attributes { get; }
+    private NfsFileAttributes? _cachedAttributes;
 
     /// <summary>
     /// Gets the full NFS path of this folder (e.g. <c>/reports</c>).
@@ -46,6 +43,13 @@ public partial class NfsFolder :
 
     /// <inheritdoc/>
     public string Name => Path == "/" ? string.Empty : global::System.IO.Path.GetFileName(Path.TrimEnd('/'));
+
+    /// <inheritdoc/>
+    public async Task<IStorageProperty<NfsFileAttributes>> GetFileAttributesAsync(CancellationToken cancellationToken = default)
+    {
+        _cachedAttributes ??= await _nfsClient.GetAttrAsync(Path, cancellationToken);
+        return new StorageProperty<NfsFileAttributes>(_cachedAttributes);
+    }
 
     /// <inheritdoc/>
     public Task<IChildFile> CreateCopyOfAsync(IFile fileToCopy, bool overwrite, CancellationToken cancellationToken, CreateCopyOfDelegate fallback)
@@ -78,16 +82,19 @@ public partial class NfsFolder :
     public async Task<IChildFile> CreateFileAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         var filePath = NfsHelpers.CombinePath(Path, name);
+        var exists = await _nfsClient.ExistsAsync(filePath, cancellationToken);
 
-        if (!overwrite && await _nfsClient.ExistsAsync(filePath, cancellationToken))
-            throw new FileAlreadyExistsException($"A file named \"{name}\" already exists in this folder.");
+        if (exists && !overwrite)
+        {
+            // When the file already exists and overwrite is false, behave as an open operation.
+            return new NfsFile(_nfsClient, filePath);
+        }
 
-        using var stream = await _nfsClient.OpenFileAsync(filePath, FileAccess.Write, create: true, cancellationToken);
-        await stream.SetLengthAsync(0, cancellationToken);
+        using var stream = await _nfsClient.OpenStreamAsync(filePath, FileAccess.Write, create: true, cancellationToken);
+        stream.SetLength(0);
         await stream.FlushAsync(cancellationToken);
 
-        var attrs = await _nfsClient.GetAttrAsync(filePath, cancellationToken);
-        return new NfsFile(_nfsClient, filePath, attrs);
+        return new NfsFile(_nfsClient, filePath);
     }
 
     /// <inheritdoc/>
@@ -107,8 +114,7 @@ public partial class NfsFolder :
             await _nfsClient.MkDirAsync(folderPath, null, cancellationToken);
         }
 
-        var folderAttrs = await _nfsClient.GetAttrAsync(folderPath, cancellationToken);
-        return new NfsFolder(_nfsClient, folderPath, folderAttrs);
+        return new NfsFolder(_nfsClient, folderPath);
     }
 
     /// <inheritdoc/>
@@ -195,21 +201,20 @@ public partial class NfsFolder :
     }
 
     /// <inheritdoc/>
-    public async Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
+    public Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
     {
         var parentPath = NfsHelpers.GetParentPath(Path);
 
         if (parentPath is null)
-            return null;
+            return Task.FromResult<IFolder?>(null);
 
-        var attrs = await _nfsClient.GetAttrAsync(parentPath, cancellationToken);
-        return new NfsFolder(_nfsClient, parentPath, attrs);
+        return Task.FromResult<IFolder?>(new NfsFolder(_nfsClient, parentPath));
     }
 
     /// <summary>
     /// Recursively deletes all contents of a folder, then deletes the folder itself.
     /// </summary>
-    private static async Task DeleteFolderRecursiveAsync(NfsClient client, string path, CancellationToken cancellationToken)
+    private static async Task DeleteFolderRecursiveAsync(INfsClient client, string path, CancellationToken cancellationToken)
     {
         await foreach (var entry in client.ReadDirStreamAsync(path, cancellationToken))
         {

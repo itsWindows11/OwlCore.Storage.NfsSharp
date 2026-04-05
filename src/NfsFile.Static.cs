@@ -1,5 +1,3 @@
-using NfsSharp;
-
 namespace OwlCore.Storage.NfsSharp;
 
 // Helper methods to get files from a path directly.
@@ -13,7 +11,7 @@ public partial class NfsFile
     /// <param name="cancellationToken">A token that can be used to cancel the ongoing operation.</param>
     /// <returns>An <see cref="NfsFile"/> that represents the remote file.</returns>
     /// <exception cref="FileNotFoundException">Thrown when no file is found at <paramref name="path"/>.</exception>
-    public static async Task<NfsFile> GetFromNfsPathAsync(NfsClient nfsClient, string path, CancellationToken cancellationToken = default)
+    public static async Task<NfsFile> GetFromNfsPathAsync(INfsClient nfsClient, string path, CancellationToken cancellationToken = default)
     {
         var file = await TryGetFromNfsPathAsync(nfsClient, path, cancellationToken);
 
@@ -31,7 +29,7 @@ public partial class NfsFile
     /// <param name="path">The NFS path of the file to retrieve (e.g. <c>/reports/q4.csv</c>).</param>
     /// <param name="cancellationToken">A token that can be used to cancel the ongoing operation.</param>
     /// <returns>The <see cref="NfsFile"/> if found; <see langword="null"/> if the path does not exist or is not a file.</returns>
-    public static async Task<NfsFile?> TryGetFromNfsPathAsync(NfsClient nfsClient, string path, CancellationToken cancellationToken = default)
+    public static async Task<NfsFile?> TryGetFromNfsPathAsync(INfsClient nfsClient, string path, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 

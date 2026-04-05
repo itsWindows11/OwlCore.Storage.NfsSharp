@@ -1,4 +1,3 @@
-using NfsSharp;
 using OwlCore.Storage.CommonTests;
 
 namespace OwlCore.Storage.NfsSharp.Tests;
@@ -6,21 +5,17 @@ namespace OwlCore.Storage.NfsSharp.Tests;
 [TestClass]
 public class NfsFolderTests : CommonIModifiableFolderTests
 {
-    private NfsClient _nfsClient = null!;
+    private MockNfsClient _mockClient = null!;
 
     [TestInitialize]
-    public async Task InitAsync()
+    public void Initialize()
     {
-        var server = Environment.GetEnvironmentVariable("NFS_SERVER")!;
-        var exportPath = Environment.GetEnvironmentVariable("NFS_EXPORT_PATH")!;
-
-        _nfsClient = new NfsClient(server, exportPath);
-        await _nfsClient.ConnectAsync();
+        _mockClient = new MockNfsClient();
     }
 
     public override async Task<IModifiableFolder> CreateModifiableFolderAsync()
     {
-        var rootFolder = await NfsFolder.GetFromNfsPathAsync(_nfsClient, "/");
+        var rootFolder = await NfsFolder.GetFromNfsPathAsync(_mockClient, "/");
         var testFolder = await rootFolder.CreateFolderAsync("owlcorestoragetest") as NfsFolder;
 
         var name = Ulid.NewUlid().ToString();
@@ -37,7 +32,7 @@ public class NfsFolderTests : CommonIModifiableFolderTests
 
     public override async Task<IModifiableFolder> CreateModifiableFolderWithItems(int fileCount, int folderCount)
     {
-        var rootFolder = await NfsFolder.GetFromNfsPathAsync(_nfsClient, "/");
+        var rootFolder = await NfsFolder.GetFromNfsPathAsync(_mockClient, "/");
         var testFolder = await rootFolder.CreateFolderAsync("owlcorestoragetest") as NfsFolder;
 
         var name = Ulid.NewUlid().ToString();
@@ -67,6 +62,6 @@ public class NfsFolderTests : CommonIModifiableFolderTests
     [TestCleanup]
     public void Cleanup()
     {
-        _nfsClient.Dispose();
+        _mockClient.Dispose();
     }
 }
