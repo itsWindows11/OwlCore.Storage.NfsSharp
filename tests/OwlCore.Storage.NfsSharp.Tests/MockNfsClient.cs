@@ -191,7 +191,7 @@ internal sealed class MockNfsClient : INfsClient
         private readonly MockNfsClient _owner;
 
         public MockFileStream(string path, byte[] initial, MockNfsClient owner)
-            : base(Math.Max(initial.Length, 16))
+            : base(initial.Length > 0 ? initial.Length : 4096)
         {
             _path = path;
             _owner = owner;
