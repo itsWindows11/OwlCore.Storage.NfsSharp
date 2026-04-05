@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/OwlCore.Storage.NfsSharp.csproj" />
+  <Project Path="tests/OwlCore.Storage.NfsSharp.Tests/OwlCore.Storage.NfsSharp.Tests.csproj" />
+</Solution>
