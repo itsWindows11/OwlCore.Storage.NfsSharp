@@ -58,9 +58,9 @@ public static class NfsHelpers
 
             return attrs.Type switch
             {
-                NfsFileType.Directory => new NfsFolder(client, path, attrs),
-                NfsFileType.Regular => new NfsFile(client, path, attrs),
-                NfsFileType.SymbolicLink => new NfsFile(client, path, attrs),
+                NfsFileType.Directory => new NfsFolder(client, path),
+                NfsFileType.Regular => new NfsFile(client, path),
+                NfsFileType.SymbolicLink => new NfsFile(client, path),
                 _ => throw new NotSupportedException($"NFS file type '{attrs.Type}' is not supported.")
             };
         }

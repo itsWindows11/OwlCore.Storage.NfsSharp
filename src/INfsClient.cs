@@ -50,6 +50,11 @@ public interface INfsClient : IDisposable, IAsyncDisposable
     Task RenameAsync(string sourcePath, string destPath, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sets attributes on the file-system object at <paramref name="path"/>.
+    /// </summary>
+    Task SetAttrAsync(string path, NfsSetAttributes attrs, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Uploads a local file to the NFS server.
     /// </summary>
     Task UploadFileFromLocalAsync(string localPath, string remotePath, int parallelism, int chunkSize, IProgress<long>? progress, CancellationToken cancellationToken = default);

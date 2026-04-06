@@ -37,6 +37,37 @@ public class NfsFileTests : CommonIFileTests
         }
     }
 
+    /// <inheritdoc/>
+    public override Task<IFile?> CreateFileWithCreatedAtAsync(DateTime createdAt)
+    {
+        // NFS v3 does not expose a creation time — skip this test.
+        return Task.FromResult<IFile?>(null);
+    }
+
+    /// <inheritdoc/>
+    public override async Task<IFile?> CreateFileWithLastModifiedAtAsync(DateTime lastModifiedAt)
+    {
+        var rootFolder = await NfsFolder.GetFromNfsPathAsync(_mockClient, "/");
+        var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
+        var file = (NfsFile)await testFolder.CreateFileAsync(Ulid.NewUlid().ToString());
+
+        _mockClient.SetTimestamps(file.Path, modifyTime: new DateTimeOffset(lastModifiedAt, TimeSpan.Zero));
+
+        return file;
+    }
+
+    /// <inheritdoc/>
+    public override async Task<IFile?> CreateFileWithLastAccessedAtAsync(DateTime lastAccessedAt)
+    {
+        var rootFolder = await NfsFolder.GetFromNfsPathAsync(_mockClient, "/");
+        var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
+        var file = (NfsFile)await testFolder.CreateFileAsync(Ulid.NewUlid().ToString());
+
+        _mockClient.SetTimestamps(file.Path, accessTime: new DateTimeOffset(lastAccessedAt, TimeSpan.Zero));
+
+        return file;
+    }
+
     [TestCleanup]
     public void Cleanup()
     {

@@ -1,28 +1,27 @@
-using NfsSharp.Protocol;
-
 namespace OwlCore.Storage.NfsSharp;
 
 /// <summary>
 /// An <see cref="IChildFile"/> implementation backed by a file on an NFS server.
 /// </summary>
-public partial class NfsFile : IChildFile, IHasNfsFileAttributes
+public partial class NfsFile : IChildFile, ILastModifiedAtOffset, ILastAccessedAtOffset
 {
     internal readonly INfsClient _nfsClient;
+
+    private ILastModifiedAtProperty? _lastModifiedAt;
+    private ILastModifiedAtOffsetProperty? _lastModifiedAtOffset;
+    private ILastAccessedAtProperty? _lastAccessedAt;
+    private ILastAccessedAtOffsetProperty? _lastAccessedAtOffset;
 
     /// <summary>
     /// Initializes a new instance of <see cref="NfsFile"/>.
     /// </summary>
     /// <param name="nfsClient">The NFS client to use for file operations.</param>
     /// <param name="path">The absolute path of the file within the NFS export (e.g. <c>/reports/q4.csv</c>).</param>
-    /// <param name="cachedAttributes">Already-fetched NFS attributes, if available. When non-<see langword="null"/> the first call to <see cref="GetFileAttributesAsync"/> returns immediately without a network round-trip.</param>
-    public NfsFile(INfsClient nfsClient, string path, NfsFileAttributes? cachedAttributes = null)
+    public NfsFile(INfsClient nfsClient, string path)
     {
         _nfsClient = nfsClient;
         Path = path;
-        _cachedAttributes = cachedAttributes;
     }
-
-    private NfsFileAttributes? _cachedAttributes;
 
     /// <summary>
     /// Gets the full NFS path of this file (e.g. <c>/reports/q4.csv</c>).
@@ -36,11 +35,20 @@ public partial class NfsFile : IChildFile, IHasNfsFileAttributes
     public string Name => global::System.IO.Path.GetFileName(Path);
 
     /// <inheritdoc/>
-    public async Task<IStorageProperty<NfsFileAttributes>> GetFileAttributesAsync(CancellationToken cancellationToken = default)
-    {
-        _cachedAttributes ??= await _nfsClient.GetAttrAsync(Path, cancellationToken);
-        return new StorageProperty<NfsFileAttributes>(_cachedAttributes);
-    }
+    public ILastModifiedAtProperty LastModifiedAt =>
+        _lastModifiedAt ??= new NfsLastModifiedAtProperty(this, _nfsClient, Path);
+
+    /// <inheritdoc/>
+    public ILastModifiedAtOffsetProperty LastModifiedAtOffset =>
+        _lastModifiedAtOffset ??= new NfsLastModifiedAtOffsetProperty(this, _nfsClient, Path);
+
+    /// <inheritdoc/>
+    public ILastAccessedAtProperty LastAccessedAt =>
+        _lastAccessedAt ??= new NfsLastAccessedAtProperty(this, _nfsClient, Path);
+
+    /// <inheritdoc/>
+    public ILastAccessedAtOffsetProperty LastAccessedAtOffset =>
+        _lastAccessedAtOffset ??= new NfsLastAccessedAtOffsetProperty(this, _nfsClient, Path);
 
     /// <inheritdoc/>
     public async Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)

@@ -14,6 +14,8 @@ internal sealed class MockNfsClient : INfsClient
     private readonly ConcurrentDictionary<string, bool> _isDirectory = new(StringComparer.Ordinal);
     // File contents keyed by path.
     private readonly ConcurrentDictionary<string, byte[]> _files = new(StringComparer.Ordinal);
+    // Per-path timestamps (AccessTime, ModifyTime).
+    private readonly ConcurrentDictionary<string, (DateTimeOffset Access, DateTimeOffset Modify)> _timestamps = new(StringComparer.Ordinal);
 
     public MockNfsClient()
     {
@@ -31,15 +33,19 @@ internal sealed class MockNfsClient : INfsClient
         if (!_isDirectory.TryGetValue(path, out var isDir))
             throw new FileNotFoundException($"No entry at '{path}'.");
 
+        _timestamps.TryGetValue(path, out var ts);
+        var accessTime = ts.Access == default ? DateTimeOffset.UtcNow : ts.Access;
+        var modifyTime = ts.Modify == default ? DateTimeOffset.UtcNow : ts.Modify;
+
         var attrs = new NfsFileAttributes
         {
             Type = isDir ? NfsFileType.Directory : NfsFileType.Regular,
             Mode = isDir ? 0b111_101_101u : 0b110_100_100u, // 755 / 644
             Size = isDir ? 0UL : (ulong)(_files.TryGetValue(path, out var data) ? data.Length : 0),
             Used = isDir ? 0UL : (ulong)(_files.TryGetValue(path, out var used) ? used.Length : 0),
-            AccessTime = DateTimeOffset.UtcNow,
-            ModifyTime = DateTimeOffset.UtcNow,
-            ChangeTime = DateTimeOffset.UtcNow,
+            AccessTime = accessTime,
+            ModifyTime = modifyTime,
+            ChangeTime = modifyTime,
         };
         return Task.FromResult(attrs);
     }
@@ -106,6 +112,7 @@ internal sealed class MockNfsClient : INfsClient
         path = Normalize(path);
         _isDirectory.TryRemove(path, out _);
         _files.TryRemove(path, out _);
+        _timestamps.TryRemove(path, out _);
         return Task.CompletedTask;
     }
 
@@ -114,6 +121,7 @@ internal sealed class MockNfsClient : INfsClient
         cancellationToken.ThrowIfCancellationRequested();
         path = Normalize(path);
         _isDirectory.TryRemove(path, out _);
+        _timestamps.TryRemove(path, out _);
         return Task.CompletedTask;
     }
 
@@ -132,6 +140,17 @@ internal sealed class MockNfsClient : INfsClient
         if (!isDir && _files.TryRemove(sourcePath, out var data))
             _files[destPath] = data;
 
+        if (_timestamps.TryRemove(sourcePath, out var ts))
+            _timestamps[destPath] = ts;
+
+        return Task.CompletedTask;
+    }
+
+    public Task SetAttrAsync(string path, NfsSetAttributes attrs, CancellationToken cancellationToken = default)
+    {
+        // MockNfsClient only tracks Mode/Size from NfsSetAttributes (no time fields are exposed
+        // by NfsSetAttributes in NfsSharp, so timestamps must be set via SetTimestamps()).
+        cancellationToken.ThrowIfCancellationRequested();
         return Task.CompletedTask;
     }
 
@@ -148,6 +167,18 @@ internal sealed class MockNfsClient : INfsClient
         _isDirectory[path] = false;
         _files[path] = contents;
         EnsureParentDirectory(path);
+    }
+
+    /// <summary>
+    /// Sets specific timestamps for an existing entry (used by test factory methods).
+    /// </summary>
+    internal void SetTimestamps(string path, DateTimeOffset? accessTime = null, DateTimeOffset? modifyTime = null)
+    {
+        path = Normalize(path);
+        _timestamps.AddOrUpdate(
+            path,
+            _ => (accessTime ?? DateTimeOffset.UtcNow, modifyTime ?? DateTimeOffset.UtcNow),
+            (_, existing) => (accessTime ?? existing.Access, modifyTime ?? existing.Modify));
     }
 
     private static string Normalize(string path)

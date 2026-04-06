@@ -14,24 +14,26 @@ public partial class NfsFolder :
     IGetItemRecursive,
     ICreateRenamedCopyOf,
     IMoveRenamedFrom,
-    IHasNfsFileAttributes
+    ILastModifiedAtOffset,
+    ILastAccessedAtOffset
 {
     internal readonly INfsClient _nfsClient;
+
+    private ILastModifiedAtProperty? _lastModifiedAt;
+    private ILastModifiedAtOffsetProperty? _lastModifiedAtOffset;
+    private ILastAccessedAtProperty? _lastAccessedAt;
+    private ILastAccessedAtOffsetProperty? _lastAccessedAtOffset;
 
     /// <summary>
     /// Initializes a new instance of <see cref="NfsFolder"/>.
     /// </summary>
     /// <param name="nfsClient">The NFS client to use for folder operations.</param>
     /// <param name="path">The absolute path of the folder within the NFS export (e.g. <c>/reports</c> or <c>/</c> for root).</param>
-    /// <param name="cachedAttributes">Already-fetched NFS attributes, if available. When non-<see langword="null"/> the first call to <see cref="GetFileAttributesAsync"/> returns immediately without a network round-trip.</param>
-    public NfsFolder(INfsClient nfsClient, string path, NfsFileAttributes? cachedAttributes = null)
+    public NfsFolder(INfsClient nfsClient, string path)
     {
         _nfsClient = nfsClient;
         Path = path;
-        _cachedAttributes = cachedAttributes;
     }
-
-    private NfsFileAttributes? _cachedAttributes;
 
     /// <summary>
     /// Gets the full NFS path of this folder (e.g. <c>/reports</c>).
@@ -45,11 +47,20 @@ public partial class NfsFolder :
     public string Name => Path == "/" ? string.Empty : global::System.IO.Path.GetFileName(Path.TrimEnd('/'));
 
     /// <inheritdoc/>
-    public async Task<IStorageProperty<NfsFileAttributes>> GetFileAttributesAsync(CancellationToken cancellationToken = default)
-    {
-        _cachedAttributes ??= await _nfsClient.GetAttrAsync(Path, cancellationToken);
-        return new StorageProperty<NfsFileAttributes>(_cachedAttributes);
-    }
+    public ILastModifiedAtProperty LastModifiedAt =>
+        _lastModifiedAt ??= new NfsLastModifiedAtProperty(this, _nfsClient, Path);
+
+    /// <inheritdoc/>
+    public ILastModifiedAtOffsetProperty LastModifiedAtOffset =>
+        _lastModifiedAtOffset ??= new NfsLastModifiedAtOffsetProperty(this, _nfsClient, Path);
+
+    /// <inheritdoc/>
+    public ILastAccessedAtProperty LastAccessedAt =>
+        _lastAccessedAt ??= new NfsLastAccessedAtProperty(this, _nfsClient, Path);
+
+    /// <inheritdoc/>
+    public ILastAccessedAtOffsetProperty LastAccessedAtOffset =>
+        _lastAccessedAtOffset ??= new NfsLastAccessedAtOffsetProperty(this, _nfsClient, Path);
 
     /// <inheritdoc/>
     public Task<IChildFile> CreateCopyOfAsync(IFile fileToCopy, bool overwrite, CancellationToken cancellationToken, CreateCopyOfDelegate fallback)
@@ -194,9 +205,9 @@ public partial class NfsFolder :
             var isDirectory = attrs.Type == NfsFileType.Directory;
 
             if (isDirectory && type.HasFlag(StorableType.Folder))
-                yield return new NfsFolder(_nfsClient, entryPath, attrs);
+                yield return new NfsFolder(_nfsClient, entryPath);
             else if (!isDirectory && type.HasFlag(StorableType.File))
-                yield return new NfsFile(_nfsClient, entryPath, attrs);
+                yield return new NfsFile(_nfsClient, entryPath);
         }
     }
 

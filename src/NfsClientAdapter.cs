@@ -51,6 +51,10 @@ public sealed class NfsClientAdapter : INfsClient
         => _client.RenameAsync(sourcePath, destPath, cancellationToken);
 
     /// <inheritdoc/>
+    public Task SetAttrAsync(string path, NfsSetAttributes attrs, CancellationToken cancellationToken = default)
+        => _client.SetAttrAsync(path, attrs, cancellationToken);
+
+    /// <inheritdoc/>
     public Task UploadFileFromLocalAsync(string localPath, string remotePath, int parallelism, int chunkSize, IProgress<long>? progress, CancellationToken cancellationToken = default)
         => _client.UploadFileFromLocalAsync(localPath, remotePath, parallelism, chunkSize, progress, cancellationToken);
 
