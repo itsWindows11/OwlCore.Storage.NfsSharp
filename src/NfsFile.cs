@@ -7,10 +7,10 @@ public partial class NfsFile : IChildFile, ILastModifiedAtOffset, ILastAccessedA
 {
     internal readonly INfsClient _nfsClient;
 
-    private IModifiableLastModifiedAtProperty? _lastModifiedAt;
-    private IModifiableLastModifiedAtOffsetProperty? _lastModifiedAtOffset;
-    private IModifiableLastAccessedAtProperty? _lastAccessedAt;
-    private IModifiableLastAccessedAtOffsetProperty? _lastAccessedAtOffset;
+    private ILastModifiedAtProperty? _lastModifiedAt;
+    private ILastModifiedAtOffsetProperty? _lastModifiedAtOffset;
+    private ILastAccessedAtProperty? _lastAccessedAt;
+    private ILastAccessedAtOffsetProperty? _lastAccessedAtOffset;
 
     /// <summary>
     /// Initializes a new instance of <see cref="NfsFile"/>.
@@ -35,43 +35,19 @@ public partial class NfsFile : IChildFile, ILastModifiedAtOffset, ILastAccessedA
     public string Name => global::System.IO.Path.GetFileName(Path);
 
     /// <inheritdoc/>
-    ILastModifiedAtProperty ILastModifiedAt.LastModifiedAt =>
-        _lastModifiedAt ??= new NfsLastModifiedAtProperty(this, _nfsClient, Path);
-
-    /// <summary>
-    /// Gets the last-modified timestamp property, which also supports updating the value.
-    /// </summary>
-    public IModifiableLastModifiedAtProperty LastModifiedAt =>
+    public ILastModifiedAtProperty LastModifiedAt =>
         _lastModifiedAt ??= new NfsLastModifiedAtProperty(this, _nfsClient, Path);
 
     /// <inheritdoc/>
-    ILastModifiedAtOffsetProperty ILastModifiedAtOffset.LastModifiedAtOffset =>
-        _lastModifiedAtOffset ??= new NfsLastModifiedAtOffsetProperty(this, _nfsClient, Path);
-
-    /// <summary>
-    /// Gets the last-modified timestamp (with offset) property, which also supports updating the value.
-    /// </summary>
-    public IModifiableLastModifiedAtOffsetProperty LastModifiedAtOffset =>
+    public ILastModifiedAtOffsetProperty LastModifiedAtOffset =>
         _lastModifiedAtOffset ??= new NfsLastModifiedAtOffsetProperty(this, _nfsClient, Path);
 
     /// <inheritdoc/>
-    ILastAccessedAtProperty ILastAccessedAt.LastAccessedAt =>
-        _lastAccessedAt ??= new NfsLastAccessedAtProperty(this, _nfsClient, Path);
-
-    /// <summary>
-    /// Gets the last-accessed timestamp property, which also supports updating the value.
-    /// </summary>
-    public IModifiableLastAccessedAtProperty LastAccessedAt =>
+    public ILastAccessedAtProperty LastAccessedAt =>
         _lastAccessedAt ??= new NfsLastAccessedAtProperty(this, _nfsClient, Path);
 
     /// <inheritdoc/>
-    ILastAccessedAtOffsetProperty ILastAccessedAtOffset.LastAccessedAtOffset =>
-        _lastAccessedAtOffset ??= new NfsLastAccessedAtOffsetProperty(this, _nfsClient, Path);
-
-    /// <summary>
-    /// Gets the last-accessed timestamp (with offset) property, which also supports updating the value.
-    /// </summary>
-    public IModifiableLastAccessedAtOffsetProperty LastAccessedAtOffset =>
+    public ILastAccessedAtOffsetProperty LastAccessedAtOffset =>
         _lastAccessedAtOffset ??= new NfsLastAccessedAtOffsetProperty(this, _nfsClient, Path);
 
     /// <inheritdoc/>

@@ -56,7 +56,7 @@ public class NfsFileTests : CommonIFileTests
         var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
         var file = (NfsFile)await testFolder.CreateFileAsync(Ulid.NewUlid().ToString());
 
-        await file.LastModifiedAt.UpdateValueAsync(lastModifiedAt, CancellationToken.None);
+        _mockClient.SetTimestamps(file.Path, modifyTime: new DateTimeOffset(lastModifiedAt, TimeSpan.Zero));
 
         return file;
     }
@@ -68,7 +68,7 @@ public class NfsFileTests : CommonIFileTests
         var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
         var file = (NfsFile)await testFolder.CreateFileAsync(Ulid.NewUlid().ToString());
 
-        await file.LastAccessedAt.UpdateValueAsync(lastAccessedAt, CancellationToken.None);
+        _mockClient.SetTimestamps(file.Path, accessTime: new DateTimeOffset(lastAccessedAt, TimeSpan.Zero));
 
         return file;
     }

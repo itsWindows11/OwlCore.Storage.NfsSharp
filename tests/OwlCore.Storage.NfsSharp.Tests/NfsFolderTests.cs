@@ -80,7 +80,7 @@ public class NfsFolderTests : CommonIModifiableFolderTests
         var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
         var folder = (NfsFolder)await testFolder.CreateFolderAsync(Ulid.NewUlid().ToString());
 
-        await folder.LastModifiedAt.UpdateValueAsync(lastModifiedAt, CancellationToken.None);
+        _mockClient.SetTimestamps(folder.Path, modifyTime: new DateTimeOffset(lastModifiedAt, TimeSpan.Zero));
 
         return folder;
     }
@@ -92,7 +92,7 @@ public class NfsFolderTests : CommonIModifiableFolderTests
         var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
         var folder = (NfsFolder)await testFolder.CreateFolderAsync(Ulid.NewUlid().ToString());
 
-        await folder.LastAccessedAt.UpdateValueAsync(lastAccessedAt, CancellationToken.None);
+        _mockClient.SetTimestamps(folder.Path, accessTime: new DateTimeOffset(lastAccessedAt, TimeSpan.Zero));
 
         return folder;
     }
@@ -102,7 +102,7 @@ public class NfsFolderTests : CommonIModifiableFolderTests
     {
         var file = (NfsFile)await folder.CreateFileAsync(Ulid.NewUlid().ToString());
 
-        await file.LastModifiedAt.UpdateValueAsync(lastModifiedAt, CancellationToken.None);
+        _mockClient.SetTimestamps(file.Path, modifyTime: new DateTimeOffset(lastModifiedAt, TimeSpan.Zero));
 
         return file;
     }
@@ -116,11 +116,10 @@ public class NfsFolderTests : CommonIModifiableFolderTests
     {
         var file = (NfsFile)await folder.CreateFileAsync(Ulid.NewUlid().ToString());
 
-        if (lastModifiedAt.HasValue)
-            await file.LastModifiedAt.UpdateValueAsync(lastModifiedAt.Value, CancellationToken.None);
-
-        if (lastAccessedAt.HasValue)
-            await file.LastAccessedAt.UpdateValueAsync(lastAccessedAt.Value, CancellationToken.None);
+        _mockClient.SetTimestamps(
+            file.Path,
+            accessTime: lastAccessedAt.HasValue ? new DateTimeOffset(lastAccessedAt.Value, TimeSpan.Zero) : null,
+            modifyTime: lastModifiedAt.HasValue ? new DateTimeOffset(lastModifiedAt.Value, TimeSpan.Zero) : null);
 
         // NFS v3 has no creation time. Report the timestamps we actually set so that the
         // copy/move preservation tests can verify them via the now-writable properties.
