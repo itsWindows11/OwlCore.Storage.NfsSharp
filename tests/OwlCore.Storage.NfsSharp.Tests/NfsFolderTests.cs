@@ -7,6 +7,13 @@ public class NfsFolderTests : CommonIModifiableFolderTests
 {
     private MockNfsClient _mockClient = null!;
 
+    // The mock NFS server does not automatically update timestamps on file system operations
+    // (read, write, folder iteration, create, delete). Only explicit SETATTR calls via
+    // SetAttrAsync / UpdateValueAsync change timestamps. Signal this to the common tests
+    // so they skip the automatic-update assertions.
+    public override PropertyUpdateBehavior LastModifiedAtUpdateBehavior => PropertyUpdateBehavior.Never;
+    public override PropertyUpdateBehavior LastAccessedAtUpdateBehavior => PropertyUpdateBehavior.Never;
+
     [TestInitialize]
     public void Initialize()
     {
@@ -73,7 +80,7 @@ public class NfsFolderTests : CommonIModifiableFolderTests
         var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
         var folder = (NfsFolder)await testFolder.CreateFolderAsync(Ulid.NewUlid().ToString());
 
-        _mockClient.SetTimestamps(folder.Path, modifyTime: new DateTimeOffset(lastModifiedAt, TimeSpan.Zero));
+        await folder.LastModifiedAt.UpdateValueAsync(lastModifiedAt, CancellationToken.None);
 
         return folder;
     }
@@ -85,7 +92,7 @@ public class NfsFolderTests : CommonIModifiableFolderTests
         var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
         var folder = (NfsFolder)await testFolder.CreateFolderAsync(Ulid.NewUlid().ToString());
 
-        _mockClient.SetTimestamps(folder.Path, accessTime: new DateTimeOffset(lastAccessedAt, TimeSpan.Zero));
+        await folder.LastAccessedAt.UpdateValueAsync(lastAccessedAt, CancellationToken.None);
 
         return folder;
     }
@@ -95,7 +102,7 @@ public class NfsFolderTests : CommonIModifiableFolderTests
     {
         var file = (NfsFile)await folder.CreateFileAsync(Ulid.NewUlid().ToString());
 
-        _mockClient.SetTimestamps(file.Path, modifyTime: new DateTimeOffset(lastModifiedAt, TimeSpan.Zero));
+        await file.LastModifiedAt.UpdateValueAsync(lastModifiedAt, CancellationToken.None);
 
         return file;
     }
@@ -109,19 +116,19 @@ public class NfsFolderTests : CommonIModifiableFolderTests
     {
         var file = (NfsFile)await folder.CreateFileAsync(Ulid.NewUlid().ToString());
 
-        _mockClient.SetTimestamps(
-            file.Path,
-            accessTime: lastAccessedAt.HasValue ? new DateTimeOffset(lastAccessedAt.Value, TimeSpan.Zero) : null,
-            modifyTime: lastModifiedAt.HasValue ? new DateTimeOffset(lastModifiedAt.Value, TimeSpan.Zero) : null);
+        if (lastModifiedAt.HasValue)
+            await file.LastModifiedAt.UpdateValueAsync(lastModifiedAt.Value, CancellationToken.None);
 
-        // NfsSetAttributes has no time fields, so timestamps cannot be preserved through
-        // CreateCopyOfAsync / MoveFromAsync. Return null for all timestamps to signal that
-        // the copy/move preservation checks should be skipped.
+        if (lastAccessedAt.HasValue)
+            await file.LastAccessedAt.UpdateValueAsync(lastAccessedAt.Value, CancellationToken.None);
+
+        // NFS v3 has no creation time. Report the timestamps we actually set so that the
+        // copy/move preservation tests can verify them via the now-writable properties.
         return new CreateFileInFolderWithTimestampsResult(
             CreatedFile: file,
             CreatedAt: null,
-            LastModifiedAt: null,
-            LastAccessedAt: null);
+            LastModifiedAt: lastModifiedAt,
+            LastAccessedAt: lastAccessedAt);
     }
 
     [TestCleanup]

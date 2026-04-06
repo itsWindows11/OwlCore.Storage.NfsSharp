@@ -148,9 +148,14 @@ internal sealed class MockNfsClient : INfsClient
 
     public Task SetAttrAsync(string path, NfsSetAttributes attrs, CancellationToken cancellationToken = default)
     {
-        // MockNfsClient only tracks Mode/Size from NfsSetAttributes (no time fields are exposed
-        // by NfsSetAttributes in NfsSharp, so timestamps must be set via SetTimestamps()).
         cancellationToken.ThrowIfCancellationRequested();
+        path = Normalize(path);
+
+        _timestamps.AddOrUpdate(
+            path,
+            _ => (attrs.AccessTime ?? DateTimeOffset.UtcNow, attrs.ModifyTime ?? DateTimeOffset.UtcNow),
+            (_, existing) => (attrs.AccessTime ?? existing.Access, attrs.ModifyTime ?? existing.Modify));
+
         return Task.CompletedTask;
     }
 

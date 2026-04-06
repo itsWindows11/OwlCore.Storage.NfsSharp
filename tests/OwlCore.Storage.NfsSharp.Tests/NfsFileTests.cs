@@ -7,6 +7,11 @@ public class NfsFileTests : CommonIFileTests
 {
     private MockNfsClient _mockClient = null!;
 
+    // The mock NFS server does not automatically update timestamps on file system operations.
+    // Only explicit SETATTR calls via SetAttrAsync / UpdateValueAsync change timestamps.
+    public override PropertyUpdateBehavior LastModifiedAtUpdateBehavior => PropertyUpdateBehavior.Never;
+    public override PropertyUpdateBehavior LastAccessedAtUpdateBehavior => PropertyUpdateBehavior.Never;
+
     [TestInitialize]
     public void Initialize()
     {
@@ -51,7 +56,7 @@ public class NfsFileTests : CommonIFileTests
         var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
         var file = (NfsFile)await testFolder.CreateFileAsync(Ulid.NewUlid().ToString());
 
-        _mockClient.SetTimestamps(file.Path, modifyTime: new DateTimeOffset(lastModifiedAt, TimeSpan.Zero));
+        await file.LastModifiedAt.UpdateValueAsync(lastModifiedAt, CancellationToken.None);
 
         return file;
     }
@@ -63,7 +68,7 @@ public class NfsFileTests : CommonIFileTests
         var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
         var file = (NfsFile)await testFolder.CreateFileAsync(Ulid.NewUlid().ToString());
 
-        _mockClient.SetTimestamps(file.Path, accessTime: new DateTimeOffset(lastAccessedAt, TimeSpan.Zero));
+        await file.LastAccessedAt.UpdateValueAsync(lastAccessedAt, CancellationToken.None);
 
         return file;
     }
