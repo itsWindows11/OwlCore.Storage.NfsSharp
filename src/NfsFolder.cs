@@ -90,6 +90,13 @@ public partial class NfsFolder :
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// When <paramref name="overwrite"/> is <see langword="false"/> and a file with the same name
+    /// already exists, the existing file is returned without modification ("open semantics").
+    /// This matches the behavior mandated by <c>OwlCore.Storage.CommonTests</c>:
+    /// a second call with the same name and <c>overwrite: false</c> acts as an open operation,
+    /// not an error.  Pass <c>overwrite: true</c> to truncate the existing file.
+    /// </remarks>
     public async Task<IChildFile> CreateFileAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         var filePath = NfsHelpers.CombinePath(Path, name);
