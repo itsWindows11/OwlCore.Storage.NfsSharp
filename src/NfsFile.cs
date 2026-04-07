@@ -1,3 +1,5 @@
+using NfsSharp;
+
 namespace OwlCore.Storage.NfsSharp;
 
 /// <summary>
@@ -62,11 +64,11 @@ public partial class NfsFile : IChildFile, ILastModifiedAtOffset, ILastAccessedA
     }
 
     /// <inheritdoc/>
-    public Task<Stream> OpenStreamAsync(FileAccess accessMode, CancellationToken cancellationToken = default)
+    public async Task<Stream> OpenStreamAsync(FileAccess accessMode, CancellationToken cancellationToken = default)
     {
         if (accessMode is not (FileAccess.Read or FileAccess.Write or FileAccess.ReadWrite))
             throw new ArgumentOutOfRangeException(nameof(accessMode));
 
-        return _nfsClient.OpenStreamAsync(Path, accessMode, create: false, cancellationToken);
+        return await _nfsClient.OpenFileAsync(Path, accessMode, create: false, cancellationToken);
     }
 }

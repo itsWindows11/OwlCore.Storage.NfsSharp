@@ -1,3 +1,5 @@
+using NfsSharp;
+
 namespace OwlCore.Storage.NfsSharp;
 
 // Helper methods to get folders from a path directly.

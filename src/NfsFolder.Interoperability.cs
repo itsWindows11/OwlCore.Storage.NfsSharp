@@ -1,3 +1,4 @@
+using NfsSharp;
 using NfsSharp.Protocol;
 
 namespace OwlCore.Storage.NfsSharp;
@@ -48,8 +49,8 @@ public partial class NfsFolder
         NfsFileAttributes? srcAttrs = null;
         try { srcAttrs = await _nfsClient.GetAttrAsync(sourcePath, cancellationToken); } catch { }
 
-        using var src = await _nfsClient.OpenStreamAsync(sourcePath, FileAccess.Read, create: false, cancellationToken);
-        using var dst = await _nfsClient.OpenStreamAsync(destPath, FileAccess.Write, create: true, cancellationToken);
+        await using var src = await _nfsClient.OpenFileAsync(sourcePath, FileAccess.Read, create: false, cancellationToken);
+        await using var dst = await _nfsClient.OpenFileAsync(destPath, FileAccess.Write, create: true, cancellationToken);
         await src.CopyToAsync(dst, 81920, cancellationToken);
         await dst.FlushAsync(cancellationToken);
 
