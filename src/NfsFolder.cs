@@ -109,7 +109,7 @@ public partial class NfsFolder :
             return new NfsFile(_nfsClient, filePath);
         }
 
-        await using var stream = await _nfsClient.OpenFileAsync(filePath, FileAccess.Write, create: true, cancellationToken);
+        using var stream = await _nfsClient.OpenFileAsync(filePath, FileAccess.Write, create: true, cancellationToken);
         stream.SetLength(0);
         await stream.FlushAsync(cancellationToken);
 
@@ -233,7 +233,7 @@ public partial class NfsFolder :
     /// <summary>
     /// Recursively deletes all contents of a folder, then deletes the folder itself.
     /// </summary>
-    private static async Task DeleteFolderRecursiveAsync(NfsSharp.INfsClient client, string path, CancellationToken cancellationToken)
+    private static async Task DeleteFolderRecursiveAsync(INfsClient client, string path, CancellationToken cancellationToken)
     {
         await foreach (var entry in client.ReadDirStreamAsync(path, cancellationToken))
         {

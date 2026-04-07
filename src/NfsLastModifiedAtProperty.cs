@@ -5,7 +5,7 @@ namespace OwlCore.Storage.NfsSharp;
 
 /// <summary>
 /// An <see cref="IModifiableLastModifiedAtProperty"/> implementation that reads and writes
-/// the NFS <c>mtime</c> attribute via <see cref="INfsClient.SetAttrAsync"/>.
+/// the NFS <c>mtime</c> attribute via SetAttrAsync.
 /// </summary>
 internal sealed class NfsLastModifiedAtProperty(IStorable owner, INfsClient client, string path)
     : NfsModifiableStorageProperty<DateTime?>(
