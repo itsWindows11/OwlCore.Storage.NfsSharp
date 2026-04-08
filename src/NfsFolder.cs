@@ -14,27 +14,27 @@ public partial class NfsFolder :
     IGetFirstByName,
     IGetItemRecursive,
     ICreateRenamedCopyOf,
-    IMoveRenamedFrom
+    IMoveRenamedFrom,
+    ILastModifiedAtOffset,
+    ILastAccessedAtOffset
 {
-    internal readonly NfsClient _nfsClient;
+    internal readonly INfsClient _nfsClient;
+
+    private ILastModifiedAtProperty? _lastModifiedAt;
+    private ILastModifiedAtOffsetProperty? _lastModifiedAtOffset;
+    private ILastAccessedAtProperty? _lastAccessedAt;
+    private ILastAccessedAtOffsetProperty? _lastAccessedAtOffset;
 
     /// <summary>
     /// Initializes a new instance of <see cref="NfsFolder"/>.
     /// </summary>
     /// <param name="nfsClient">The NFS client to use for folder operations.</param>
     /// <param name="path">The absolute path of the folder within the NFS export (e.g. <c>/reports</c> or <c>/</c> for root).</param>
-    /// <param name="attributes">The folder attributes, if already known. May be <see langword="null"/>.</param>
-    public NfsFolder(NfsClient nfsClient, string path, NfsFileAttributes? attributes = null)
+    public NfsFolder(INfsClient nfsClient, string path)
     {
         _nfsClient = nfsClient;
         Path = path;
-        Attributes = attributes;
     }
-
-    /// <summary>
-    /// Gets the last-known NFS file attributes for this folder, if available.
-    /// </summary>
-    public NfsFileAttributes? Attributes { get; }
 
     /// <summary>
     /// Gets the full NFS path of this folder (e.g. <c>/reports</c>).
@@ -46,6 +46,22 @@ public partial class NfsFolder :
 
     /// <inheritdoc/>
     public string Name => Path == "/" ? string.Empty : global::System.IO.Path.GetFileName(Path.TrimEnd('/'));
+
+    /// <inheritdoc/>
+    public ILastModifiedAtProperty LastModifiedAt =>
+        _lastModifiedAt ??= new NfsLastModifiedAtProperty(this, _nfsClient, Path);
+
+    /// <inheritdoc/>
+    public ILastModifiedAtOffsetProperty LastModifiedAtOffset =>
+        _lastModifiedAtOffset ??= new NfsLastModifiedAtOffsetProperty(this, _nfsClient, Path);
+
+    /// <inheritdoc/>
+    public ILastAccessedAtProperty LastAccessedAt =>
+        _lastAccessedAt ??= new NfsLastAccessedAtProperty(this, _nfsClient, Path);
+
+    /// <inheritdoc/>
+    public ILastAccessedAtOffsetProperty LastAccessedAtOffset =>
+        _lastAccessedAtOffset ??= new NfsLastAccessedAtOffsetProperty(this, _nfsClient, Path);
 
     /// <inheritdoc/>
     public Task<IChildFile> CreateCopyOfAsync(IFile fileToCopy, bool overwrite, CancellationToken cancellationToken, CreateCopyOfDelegate fallback)
@@ -75,19 +91,29 @@ public partial class NfsFolder :
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// When <paramref name="overwrite"/> is <see langword="false"/> and a file with the same name
+    /// already exists, the existing file is returned without modification ("open semantics").
+    /// This matches the behavior mandated by <c>OwlCore.Storage.CommonTests</c>:
+    /// a second call with the same name and <c>overwrite: false</c> acts as an open operation,
+    /// not an error.  Pass <c>overwrite: true</c> to truncate the existing file.
+    /// </remarks>
     public async Task<IChildFile> CreateFileAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         var filePath = NfsHelpers.CombinePath(Path, name);
+        var exists = await _nfsClient.ExistsAsync(filePath, cancellationToken);
 
-        if (!overwrite && await _nfsClient.ExistsAsync(filePath, cancellationToken))
-            throw new FileAlreadyExistsException($"A file named \"{name}\" already exists in this folder.");
+        if (exists && !overwrite)
+        {
+            // When the file already exists and overwrite is false, behave as an open operation.
+            return new NfsFile(_nfsClient, filePath);
+        }
 
         using var stream = await _nfsClient.OpenFileAsync(filePath, FileAccess.Write, create: true, cancellationToken);
-        await stream.SetLengthAsync(0, cancellationToken);
+        stream.SetLength(0);
         await stream.FlushAsync(cancellationToken);
 
-        var attrs = await _nfsClient.GetAttrAsync(filePath, cancellationToken);
-        return new NfsFile(_nfsClient, filePath, attrs);
+        return new NfsFile(_nfsClient, filePath);
     }
 
     /// <inheritdoc/>
@@ -107,8 +133,7 @@ public partial class NfsFolder :
             await _nfsClient.MkDirAsync(folderPath, null, cancellationToken);
         }
 
-        var folderAttrs = await _nfsClient.GetAttrAsync(folderPath, cancellationToken);
-        return new NfsFolder(_nfsClient, folderPath, folderAttrs);
+        return new NfsFolder(_nfsClient, folderPath);
     }
 
     /// <inheritdoc/>
@@ -188,28 +213,27 @@ public partial class NfsFolder :
             var isDirectory = attrs.Type == NfsFileType.Directory;
 
             if (isDirectory && type.HasFlag(StorableType.Folder))
-                yield return new NfsFolder(_nfsClient, entryPath, attrs);
+                yield return new NfsFolder(_nfsClient, entryPath);
             else if (!isDirectory && type.HasFlag(StorableType.File))
-                yield return new NfsFile(_nfsClient, entryPath, attrs);
+                yield return new NfsFile(_nfsClient, entryPath);
         }
     }
 
     /// <inheritdoc/>
-    public async Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
+    public Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
     {
         var parentPath = NfsHelpers.GetParentPath(Path);
 
         if (parentPath is null)
-            return null;
+            return Task.FromResult<IFolder?>(null);
 
-        var attrs = await _nfsClient.GetAttrAsync(parentPath, cancellationToken);
-        return new NfsFolder(_nfsClient, parentPath, attrs);
+        return Task.FromResult<IFolder?>(new NfsFolder(_nfsClient, parentPath));
     }
 
     /// <summary>
     /// Recursively deletes all contents of a folder, then deletes the folder itself.
     /// </summary>
-    private static async Task DeleteFolderRecursiveAsync(NfsClient client, string path, CancellationToken cancellationToken)
+    private static async Task DeleteFolderRecursiveAsync(INfsClient client, string path, CancellationToken cancellationToken)
     {
         await foreach (var entry in client.ReadDirStreamAsync(path, cancellationToken))
         {

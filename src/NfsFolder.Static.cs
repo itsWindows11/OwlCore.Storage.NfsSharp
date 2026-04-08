@@ -13,7 +13,7 @@ public partial class NfsFolder
     /// <param name="cancellationToken">A token that can be used to cancel the ongoing operation.</param>
     /// <returns>An <see cref="NfsFolder"/> that represents the remote directory.</returns>
     /// <exception cref="FileNotFoundException">Thrown when no directory is found at <paramref name="path"/>.</exception>
-    public static async Task<NfsFolder> GetFromNfsPathAsync(NfsClient nfsClient, string path, CancellationToken cancellationToken = default)
+    public static async Task<NfsFolder> GetFromNfsPathAsync(INfsClient nfsClient, string path, CancellationToken cancellationToken = default)
     {
         var folder = await TryGetFromNfsPathAsync(nfsClient, path, cancellationToken);
 
@@ -31,7 +31,7 @@ public partial class NfsFolder
     /// <param name="path">The NFS path of the folder to retrieve (e.g. <c>/reports</c> or <c>/</c> for root).</param>
     /// <param name="cancellationToken">A token that can be used to cancel the ongoing operation.</param>
     /// <returns>The <see cref="NfsFolder"/> if found; <see langword="null"/> if the path does not exist or is not a directory.</returns>
-    public static async Task<NfsFolder?> TryGetFromNfsPathAsync(NfsClient nfsClient, string path, CancellationToken cancellationToken = default)
+    public static async Task<NfsFolder?> TryGetFromNfsPathAsync(INfsClient nfsClient, string path, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 

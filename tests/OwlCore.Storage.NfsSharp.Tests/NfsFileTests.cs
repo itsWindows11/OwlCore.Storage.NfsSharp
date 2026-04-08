@@ -1,4 +1,3 @@
-using NfsSharp;
 using OwlCore.Storage.CommonTests;
 
 namespace OwlCore.Storage.NfsSharp.Tests;
@@ -6,16 +5,17 @@ namespace OwlCore.Storage.NfsSharp.Tests;
 [TestClass]
 public class NfsFileTests : CommonIFileTests
 {
-    private NfsClient _nfsClient = null!;
+    private MockNfsClient _mockClient = null!;
+
+    // The mock NFS server does not automatically update timestamps on file system operations.
+    // Only explicit SETATTR calls via SetAttrAsync / UpdateValueAsync change timestamps.
+    public override PropertyUpdateBehavior LastModifiedAtUpdateBehavior => PropertyUpdateBehavior.Never;
+    public override PropertyUpdateBehavior LastAccessedAtUpdateBehavior => PropertyUpdateBehavior.Never;
 
     [TestInitialize]
-    public async Task InitAsync()
+    public void Initialize()
     {
-        var server = Environment.GetEnvironmentVariable("NFS_SERVER")!;
-        var exportPath = Environment.GetEnvironmentVariable("NFS_EXPORT_PATH")!;
-
-        _nfsClient = new NfsClient(server, exportPath);
-        await _nfsClient.ConnectAsync();
+        _mockClient = new MockNfsClient();
     }
 
     public override Task<IFile> CreateFileAsync()
@@ -24,7 +24,7 @@ public class NfsFileTests : CommonIFileTests
 
         async Task<IFile> GenerateRandomFileAsync(int fileSize)
         {
-            var rootFolder = await NfsFolder.GetFromNfsPathAsync(_nfsClient, "/");
+            var rootFolder = await NfsFolder.GetFromNfsPathAsync(_mockClient, "/");
             var testFolder = await rootFolder.CreateFolderAsync("owlcorestoragetest") as NfsFolder;
 
             var file = await testFolder!.CreateFileAsync(Ulid.NewUlid().ToString());
@@ -42,9 +42,40 @@ public class NfsFileTests : CommonIFileTests
         }
     }
 
+    /// <inheritdoc/>
+    public override Task<IFile?> CreateFileWithCreatedAtAsync(DateTime createdAt)
+    {
+        // NFS v3 does not expose a creation time — skip this test.
+        return Task.FromResult<IFile?>(null);
+    }
+
+    /// <inheritdoc/>
+    public override async Task<IFile?> CreateFileWithLastModifiedAtAsync(DateTime lastModifiedAt)
+    {
+        var rootFolder = await NfsFolder.GetFromNfsPathAsync(_mockClient, "/");
+        var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
+        var file = (NfsFile)await testFolder.CreateFileAsync(Ulid.NewUlid().ToString());
+
+        _mockClient.SetTimestamps(file.Path, modifyTime: new DateTimeOffset(lastModifiedAt, TimeSpan.Zero));
+
+        return file;
+    }
+
+    /// <inheritdoc/>
+    public override async Task<IFile?> CreateFileWithLastAccessedAtAsync(DateTime lastAccessedAt)
+    {
+        var rootFolder = await NfsFolder.GetFromNfsPathAsync(_mockClient, "/");
+        var testFolder = (NfsFolder)await rootFolder.CreateFolderAsync("owlcorestoragetest");
+        var file = (NfsFile)await testFolder.CreateFileAsync(Ulid.NewUlid().ToString());
+
+        _mockClient.SetTimestamps(file.Path, accessTime: new DateTimeOffset(lastAccessedAt, TimeSpan.Zero));
+
+        return file;
+    }
+
     [TestCleanup]
     public void Cleanup()
     {
-        _nfsClient.Dispose();
+        _mockClient.Dispose();
     }
 }

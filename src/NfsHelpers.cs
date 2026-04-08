@@ -47,7 +47,7 @@ public static class NfsHelpers
     /// <param name="path">The NFS path to resolve.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the ongoing operation.</param>
     /// <returns>An <see cref="NfsFile"/> or <see cref="NfsFolder"/>, or <see langword="null"/> if not found.</returns>
-    internal static async Task<IStorable?> GetStorableAsync(NfsClient client, string path, CancellationToken cancellationToken = default)
+    internal static async Task<IStorable?> GetStorableAsync(INfsClient client, string path, CancellationToken cancellationToken = default)
     {
         if (path == "/")
             return new NfsFolder(client, "/");
@@ -58,9 +58,9 @@ public static class NfsHelpers
 
             return attrs.Type switch
             {
-                NfsFileType.Directory => new NfsFolder(client, path, attrs),
-                NfsFileType.Regular => new NfsFile(client, path, attrs),
-                NfsFileType.SymbolicLink => new NfsFile(client, path, attrs),
+                NfsFileType.Directory => new NfsFolder(client, path),
+                NfsFileType.Regular => new NfsFile(client, path),
+                NfsFileType.SymbolicLink => new NfsFile(client, path),
                 _ => throw new NotSupportedException($"NFS file type '{attrs.Type}' is not supported.")
             };
         }

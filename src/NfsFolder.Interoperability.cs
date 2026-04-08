@@ -1,4 +1,5 @@
 using NfsSharp;
+using NfsSharp.Protocol;
 
 namespace OwlCore.Storage.NfsSharp;
 
@@ -44,13 +45,26 @@ public partial class NfsFolder
         if (!overwrite && await _nfsClient.ExistsAsync(destPath, cancellationToken))
             throw new FileAlreadyExistsException("Destination file already exists.");
 
+        // Preserve LastModifiedAt before copying (real NFS servers copy with SETATTR after write).
+        NfsFileAttributes? srcAttrs = null;
+        try { srcAttrs = await _nfsClient.GetAttrAsync(sourcePath, cancellationToken); } catch { }
+
         using var src = await _nfsClient.OpenFileAsync(sourcePath, FileAccess.Read, create: false, cancellationToken);
         using var dst = await _nfsClient.OpenFileAsync(destPath, FileAccess.Write, create: true, cancellationToken);
         await src.CopyToAsync(dst, 81920, cancellationToken);
         await dst.FlushAsync(cancellationToken);
 
-        var attrs = await _nfsClient.GetAttrAsync(destPath, cancellationToken);
-        return new NfsFile(_nfsClient, destPath, attrs);
+        // Restore source LastModifiedAt on the destination (like cp --preserve=timestamps).
+        if (srcAttrs is not null)
+        {
+            try
+            {
+                await _nfsClient.SetAttrAsync(destPath, new NfsSetAttributes { ModifyTime = srcAttrs.ModifyTime }, cancellationToken);
+            }
+            catch { /* SETATTR is best-effort */ }
+        }
+
+        return new NfsFile(_nfsClient, destPath);
     }
 
     private async Task<IChildFile> LocalToNfsCopyAsync(string localPath, string destPath, bool overwrite, CancellationToken cancellationToken)
@@ -60,8 +74,7 @@ public partial class NfsFolder
 
         await _nfsClient.UploadFileFromLocalAsync(localPath, destPath, 4, 4 * 1024 * 1024, null, cancellationToken);
 
-        var attrs = await _nfsClient.GetAttrAsync(destPath, cancellationToken);
-        return new NfsFile(_nfsClient, destPath, attrs);
+        return new NfsFile(_nfsClient, destPath);
     }
 
     private async Task<IChildFile> NfsToNfsMoveAsync(string sourcePath, string destPath, bool overwrite, CancellationToken cancellationToken)
@@ -71,8 +84,7 @@ public partial class NfsFolder
 
         await _nfsClient.RenameAsync(sourcePath, destPath, cancellationToken);
 
-        var attrs = await _nfsClient.GetAttrAsync(destPath, cancellationToken);
-        return new NfsFile(_nfsClient, destPath, attrs);
+        return new NfsFile(_nfsClient, destPath);
     }
 
     private async Task<IChildFile> LocalToNfsMoveAsync(string localPath, string destPath, bool overwrite, CancellationToken cancellationToken)
@@ -83,7 +95,6 @@ public partial class NfsFolder
         await _nfsClient.UploadFileFromLocalAsync(localPath, destPath, 4, 4 * 1024 * 1024, null, cancellationToken);
         global::System.IO.File.Delete(localPath);
 
-        var attrs = await _nfsClient.GetAttrAsync(destPath, cancellationToken);
-        return new NfsFile(_nfsClient, destPath, attrs);
+        return new NfsFile(_nfsClient, destPath);
     }
 }
