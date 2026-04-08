@@ -11,8 +11,6 @@ namespace OwlCore.Storage.NfsSharp.Tests;
 /// </summary>
 internal sealed class MockNfsClient : global::NfsSharp.INfsClient
 {
-    private static readonly NfsFileHandle s_stubHandle = new NfsFileHandle(new byte[1]);
-
     // Reflected internals of NfsSharp used to create NfsStream via reflection.
     private static readonly Type s_INfsProtocolClientType =
         typeof(NfsStream).Assembly.GetType("NfsSharp.Protocol.INfsProtocolClient")!;
@@ -38,17 +36,25 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
     private readonly ConcurrentDictionary<string, byte[]> _files = new(StringComparer.Ordinal);
     // Per-path timestamps (AccessTime, ModifyTime).
     private readonly ConcurrentDictionary<string, (DateTimeOffset Access, DateTimeOffset Modify)> _timestamps = new(StringComparer.Ordinal);
+    // Symlink store: path → link target string.
+    private readonly ConcurrentDictionary<string, string> _symlinks = new(StringComparer.Ordinal);
+
+    // Handle registry: integer counter → handle bytes (4 bytes); bidirectional mapping.
+    private int _handleCounter = 0;
+    private readonly ConcurrentDictionary<string, NfsFileHandle> _handleByPath = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<NfsFileHandle, string> _pathByHandle = new();
 
     public MockNfsClient()
     {
-        // Root directory always exists.
+        // Root directory always exists and gets a handle eagerly.
         _isDirectory["/"] = true;
+        GetOrCreateHandle("/");
     }
 
     // --- INfsClient properties ---
 
     public NfsVersion NegotiatedVersion => NfsVersion.V3;
-    public NfsFileHandle RootHandle => s_stubHandle;
+    public NfsFileHandle RootHandle => GetOrCreateHandle("/");
     public string? ExportPath => "/";
 
     // --- Connection ---
@@ -83,7 +89,11 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
     }
 
     public Task<NfsFileAttributes> GetAttrAsync(NfsFileHandle handle, CancellationToken ct = default)
-        => throw new NotSupportedException("Handle-based GetAttr is not supported in tests.");
+    {
+        var path = PathForHandle(handle)
+            ?? throw new FileNotFoundException("Handle does not correspond to any known entry.");
+        return GetAttrAsync(path, ct);
+    }
 
     public Task SetAttrAsync(string path, NfsSetAttributes attrs, CancellationToken ct = default)
     {
@@ -99,7 +109,11 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
     }
 
     public Task SetAttrAsync(NfsFileHandle handle, NfsSetAttributes attrs, CancellationToken ct = default)
-        => throw new NotSupportedException("Handle-based SetAttr is not supported in tests.");
+    {
+        var path = PathForHandle(handle)
+            ?? throw new FileNotFoundException("Handle does not correspond to any known entry.");
+        return SetAttrAsync(path, attrs, ct);
+    }
 
     // --- Existence ---
 
@@ -110,12 +124,21 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
     }
 
     public Task<bool> ExistsAsync(NfsFileHandle handle, CancellationToken ct = default)
-        => throw new NotSupportedException("Handle-based Exists is not supported in tests.");
+    {
+        ct.ThrowIfCancellationRequested();
+        var path = PathForHandle(handle);
+        if (path is null)
+            return Task.FromResult(false);
+        return ExistsAsync(path, ct);
+    }
 
     // --- Namespace ---
 
-    public Task<(NfsFileHandle Handle, NfsFileAttributes Attributes)> LookupAsync(string path, CancellationToken ct = default)
-        => throw new NotSupportedException("Lookup is not supported in tests.");
+    public async Task<(NfsFileHandle Handle, NfsFileAttributes Attributes)> LookupAsync(string path, CancellationToken ct = default)
+    {
+        var attrs = await GetAttrAsync(path, ct);
+        return (GetOrCreateHandle(Normalize(path)), attrs);
+    }
 
     public async Task<IReadOnlyList<NfsDirectoryEntry>> ReadDirAsync(string path, CancellationToken ct = default)
     {
@@ -126,7 +149,11 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
     }
 
     public Task<IReadOnlyList<NfsDirectoryEntry>> ReadDirAsync(NfsFileHandle handle, CancellationToken ct = default)
-        => throw new NotSupportedException("Handle-based ReadDir is not supported in tests.");
+    {
+        var path = PathForHandle(handle)
+            ?? throw new FileNotFoundException("Handle does not correspond to any known directory.");
+        return ReadDirAsync(path, ct);
+    }
 
     public async IAsyncEnumerable<NfsDirectoryEntry> ReadDirStreamAsync(string path, [EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -143,22 +170,37 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
             {
                 Name = global::System.IO.Path.GetFileName(key),
                 Attributes = attrs,
+                FileHandle = GetOrCreateHandle(key),
             };
             yield return entry;
         }
     }
 
     public IAsyncEnumerable<NfsDirectoryEntry> ReadDirStreamAsync(NfsFileHandle handle, CancellationToken ct = default)
-        => throw new NotSupportedException("Handle-based ReadDirStream is not supported in tests.");
+    {
+        var path = PathForHandle(handle)
+            ?? throw new FileNotFoundException("Handle does not correspond to any known directory.");
+        return ReadDirStreamAsync(path, ct);
+    }
 
     public IAsyncEnumerable<NfsDirectoryEntry> ReadDirRecursiveAsync(string path, CancellationToken ct = default)
-        => throw new NotSupportedException("ReadDirRecursive is not supported in tests.");
+        => RecurseDirAsync(path, string.Empty, ct);
 
     public IAsyncEnumerable<NfsDirectoryEntry> ReadDirRecursiveAsync(NfsFileHandle handle, string baseRelativePath = "", CancellationToken ct = default)
-        => throw new NotSupportedException("ReadDirRecursive is not supported in tests.");
+    {
+        var path = PathForHandle(handle)
+            ?? throw new FileNotFoundException("Handle does not correspond to any known directory.");
+        return RecurseDirAsync(path, baseRelativePath, ct);
+    }
 
     public Task<string> ReadLinkAsync(string path, CancellationToken ct = default)
-        => throw new NotSupportedException("ReadLink is not supported in tests.");
+    {
+        ct.ThrowIfCancellationRequested();
+        path = Normalize(path);
+        if (!_symlinks.TryGetValue(path, out var target))
+            throw new FileNotFoundException($"No symlink at '{path}'.");
+        return Task.FromResult(target);
+    }
 
     public Task RemoveAsync(string path, CancellationToken ct = default)
     {
@@ -167,6 +209,7 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
         _isDirectory.TryRemove(path, out _);
         _files.TryRemove(path, out _);
         _timestamps.TryRemove(path, out _);
+        _symlinks.TryRemove(path, out _);
         return Task.CompletedTask;
     }
 
@@ -185,7 +228,7 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
         path = Normalize(path);
         EnsureParentDirectory(path);
         _isDirectory[path] = true;
-        return Task.FromResult(s_stubHandle);
+        return Task.FromResult(GetOrCreateHandle(path));
     }
 
     public Task RenameAsync(string sourcePath, string destPath, CancellationToken ct = default)
@@ -206,20 +249,76 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
         if (_timestamps.TryRemove(sourcePath, out var ts))
             _timestamps[destPath] = ts;
 
+        if (_symlinks.TryRemove(sourcePath, out var target))
+            _symlinks[destPath] = target;
+
+        // Update handle registry so existing handles still resolve.
+        if (_handleByPath.TryRemove(sourcePath, out var handle))
+        {
+            _handleByPath[destPath] = handle;
+            _pathByHandle[handle] = destPath;
+        }
+
         return Task.CompletedTask;
     }
 
     public Task LinkAsync(string targetPath, string linkPath, CancellationToken ct = default)
-        => throw new NotSupportedException("Link is not supported in tests.");
+    {
+        ct.ThrowIfCancellationRequested();
+        targetPath = Normalize(targetPath);
+        linkPath = Normalize(linkPath);
+
+        if (!_isDirectory.TryGetValue(targetPath, out var isDir))
+            throw new FileNotFoundException($"Target path not found at '{targetPath}'.");
+        if (isDir)
+            throw new InvalidOperationException($"Target must be a file, not a directory: '{targetPath}'.");
+
+        // Hard link: copy the current byte-array snapshot so both names see the same initial
+        // content.  Note: unlike real hard links, subsequent writes through one path are NOT
+        // automatically reflected at the other path because MockFileStream replaces the whole
+        // array on flush.  This is sufficient for the in-memory test scenarios.
+        _isDirectory[linkPath] = false;
+        if (_files.TryGetValue(targetPath, out var contents))
+            _files[linkPath] = contents;
+        EnsureParentDirectory(linkPath);
+        return Task.CompletedTask;
+    }
 
     public Task SymLinkAsync(string linkPath, string linkTarget, CancellationToken ct = default)
-        => throw new NotSupportedException("SymLink is not supported in tests.");
+    {
+        ct.ThrowIfCancellationRequested();
+        linkPath = Normalize(linkPath);
+        _symlinks[linkPath] = linkTarget;
+        _isDirectory[linkPath] = false;
+        EnsureParentDirectory(linkPath);
+        return Task.CompletedTask;
+    }
 
     public Task<NfsFsStat> FsStatAsync(CancellationToken ct = default)
-        => throw new NotSupportedException("FsStat is not supported in tests.");
+    {
+        ct.ThrowIfCancellationRequested();
+        // Return plausible in-memory stats.
+        ulong totalBytes = 1UL << 30; // 1 GiB
+        ulong usedBytes = _files.Values.Aggregate(0UL, (acc, b) => acc + (ulong)b.Length);
+        ulong freeBytes = usedBytes < totalBytes ? totalBytes - usedBytes : 0;
+        ulong totalFiles = 1_000_000;
+        ulong freeFiles = totalFiles - (ulong)_isDirectory.Count;
+        return Task.FromResult(new NfsFsStat
+        {
+            TotalBytes = totalBytes,
+            FreeBytes = freeBytes,
+            AvailBytes = freeBytes,
+            TotalFiles = totalFiles,
+            FreeFiles = freeFiles,
+            AvailFiles = freeFiles,
+        });
+    }
 
     public Task<IReadOnlyList<string>> ListExportsAsync(CancellationToken ct = default)
-        => throw new NotSupportedException("ListExports is not supported in tests.");
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<string>>(new[] { "/" });
+    }
 
     // --- Stream-based file access ---
 
@@ -246,6 +345,7 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
 
         var contents = _files.GetOrAdd(path, Array.Empty<byte>());
         var mockStream = new MockFileStream(path, contents, this);
+        var fileHandle = GetOrCreateHandle(path);
 
         // Create a DispatchProxy that implements the internal INfsProtocolClient interface.
         // DispatchProxy.Create<T, TProxy>() is called via reflection so that the internal T
@@ -263,18 +363,35 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
 
         // Use reflection to call the internal NfsStream(INfsProtocolClient, NfsFileHandle, long, bool, bool) ctor.
         var stream = (NfsStream)s_NfsStreamCtor.Invoke(
-            new object[] { proxyObj, s_stubHandle, mockStream.Length, readable, writable });
+            new object[] { proxyObj, fileHandle, mockStream.Length, readable, writable });
 
         return Task.FromResult(stream);
     }
 
     // --- Parallel local file transfer fast paths ---
 
-    public Task DownloadFileToLocalAsync(string remotePath, string localPath, int degreeOfParallelism = 4, int chunkSize = 4 * 1024 * 1024, IProgress<long>? progress = null, CancellationToken ct = default)
-        => throw new NotSupportedException("Local download is not supported in tests.");
+    public async Task DownloadFileToLocalAsync(string remotePath, string localPath, int degreeOfParallelism = 4, int chunkSize = 4 * 1024 * 1024, IProgress<long>? progress = null, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        remotePath = Normalize(remotePath);
 
-    public Task UploadFileFromLocalAsync(string localPath, string remotePath, int degreeOfParallelism = 4, int chunkSize = 4 * 1024 * 1024, IProgress<long>? progress = null, CancellationToken ct = default)
-        => throw new NotSupportedException("Local-to-mock upload is not supported in tests.");
+        if (!_files.TryGetValue(remotePath, out var contents))
+            throw new FileNotFoundException($"Remote file not found at '{remotePath}'.");
+
+        await global::System.IO.File.WriteAllBytesAsync(localPath, contents, ct);
+        progress?.Report(contents.Length);
+    }
+
+    public async Task UploadFileFromLocalAsync(string localPath, string remotePath, int degreeOfParallelism = 4, int chunkSize = 4 * 1024 * 1024, IProgress<long>? progress = null, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var contents = await global::System.IO.File.ReadAllBytesAsync(localPath, ct);
+        remotePath = Normalize(remotePath);
+        _isDirectory[remotePath] = false;
+        _files[remotePath] = contents;
+        EnsureParentDirectory(remotePath);
+        progress?.Report(contents.Length);
+    }
 
     // --- Internal helpers ---
 
@@ -296,6 +413,23 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
             path,
             _ => (accessTime ?? DateTimeOffset.UtcNow, modifyTime ?? DateTimeOffset.UtcNow),
             (_, existing) => (accessTime ?? existing.Access, modifyTime ?? existing.Modify));
+    }
+
+    private NfsFileHandle GetOrCreateHandle(string path)
+    {
+        return _handleByPath.GetOrAdd(path, p =>
+        {
+            var id = Interlocked.Increment(ref _handleCounter);
+            var handle = new NfsFileHandle(BitConverter.GetBytes(id));
+            _pathByHandle[handle] = p;
+            return handle;
+        });
+    }
+
+    private string? PathForHandle(NfsFileHandle handle)
+    {
+        _pathByHandle.TryGetValue(handle, out var path);
+        return path;
     }
 
     private static string Normalize(string path)
@@ -325,6 +459,33 @@ internal sealed class MockNfsClient : global::NfsSharp.INfsClient
         {
             _isDirectory[parent] = true;
             EnsureParentDirectory(parent);
+        }
+    }
+
+    private async IAsyncEnumerable<NfsDirectoryEntry> RecurseDirAsync(string dirPath, string relativeBase, [EnumeratorCancellation] CancellationToken ct)
+    {
+        dirPath = Normalize(dirPath);
+
+        await foreach (var entry in ReadDirStreamAsync(dirPath, ct))
+        {
+            var entryRelPath = relativeBase.Length == 0
+                ? entry.Name
+                : relativeBase + "/" + entry.Name;
+
+            yield return new NfsDirectoryEntry
+            {
+                Name = entry.Name,
+                Attributes = entry.Attributes,
+                FileHandle = entry.FileHandle,
+                RelativePath = entryRelPath,
+            };
+
+            if (entry.Attributes?.Type == NfsFileType.Directory)
+            {
+                var subPath = NfsHelpers.CombinePath(dirPath, entry.Name);
+                await foreach (var sub in RecurseDirAsync(subPath, entryRelPath, ct))
+                    yield return sub;
+            }
         }
     }
 
