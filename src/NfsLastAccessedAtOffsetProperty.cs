@@ -14,14 +14,17 @@ internal sealed class NfsLastAccessedAtOffsetProperty(IStorable owner, INfsClien
         client: client,
         asyncGetter: async ct =>
         {
-            var attrs = await client.GetAttrAsync(path, ct);
-            return attrs.AccessTime;
+            var attrOwner = (INfsAttributeOwner)owner;
+            attrOwner.CachedAttributes ??= await client.GetAttrAsync(path, ct);
+            return attrOwner.CachedAttributes.AccessTime;
         },
-        asyncSetter: (value, ct) =>
+        asyncSetter: async (value, ct) =>
         {
             if (!value.HasValue)
                 throw new ArgumentNullException(nameof(value), "Cannot set last accessed time to null.");
 
-            return client.SetAttrAsync(path, new NfsSetAttributes { AccessTime = value.Value }, ct);
+            await client.SetAttrAsync(path, new NfsSetAttributes { AccessTime = value.Value }, ct);
+
+            ((INfsAttributeOwner)owner).CachedAttributes = null;
         }),
     IModifiableLastAccessedAtOffsetProperty;
