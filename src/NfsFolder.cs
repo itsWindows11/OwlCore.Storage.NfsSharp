@@ -16,14 +16,23 @@ public partial class NfsFolder :
     ICreateRenamedCopyOf,
     IMoveRenamedFrom,
     ILastModifiedAtOffset,
-    ILastAccessedAtOffset
+    ILastAccessedAtOffset,
+    INfsAttributeOwner
 {
     internal readonly INfsClient _nfsClient;
 
+    private NfsFileAttributes? _cachedAttributes;
     private ILastModifiedAtProperty? _lastModifiedAt;
     private ILastModifiedAtOffsetProperty? _lastModifiedAtOffset;
     private ILastAccessedAtProperty? _lastAccessedAt;
     private ILastAccessedAtOffsetProperty? _lastAccessedAtOffset;
+
+    /// <inheritdoc/>
+    public NfsFileAttributes? Attributes
+    {
+        get => _cachedAttributes;
+        set => _cachedAttributes = value;
+    }
 
     /// <summary>
     /// Initializes a new instance of <see cref="NfsFolder"/>.

@@ -1,18 +1,27 @@
 using NfsSharp;
+using NfsSharp.Protocol;
 
 namespace OwlCore.Storage.NfsSharp;
 
 /// <summary>
 /// An <see cref="IChildFile"/> implementation backed by a file on an NFS server.
 /// </summary>
-public partial class NfsFile : IChildFile, ILastModifiedAtOffset, ILastAccessedAtOffset
+public partial class NfsFile : IChildFile, ILastModifiedAtOffset, ILastAccessedAtOffset, INfsAttributeOwner
 {
     internal readonly INfsClient _nfsClient;
 
+    private NfsFileAttributes? _cachedAttributes;
     private ILastModifiedAtProperty? _lastModifiedAt;
     private ILastModifiedAtOffsetProperty? _lastModifiedAtOffset;
     private ILastAccessedAtProperty? _lastAccessedAt;
     private ILastAccessedAtOffsetProperty? _lastAccessedAtOffset;
+
+    /// <inheritdoc/>
+    public NfsFileAttributes? Attributes
+    {
+        get => _cachedAttributes;
+        set => _cachedAttributes = value;
+    }
 
     /// <summary>
     /// Initializes a new instance of <see cref="NfsFile"/>.
