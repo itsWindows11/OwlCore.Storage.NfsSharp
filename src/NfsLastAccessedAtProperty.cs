@@ -7,16 +7,15 @@ namespace OwlCore.Storage.NfsSharp;
 /// An <see cref="IModifiableLastAccessedAtProperty"/> implementation that reads and writes
 /// the NFS <c>atime</c> attribute via SetAttrAsync.
 /// </summary>
-internal sealed class NfsLastAccessedAtProperty(IStorable owner, INfsClient client, string path)
+internal sealed class NfsLastAccessedAtProperty(INfsAttributeOwner owner, INfsClient client, string path)
     : NfsModifiableStorageProperty<DateTime?>(
         id: owner.Id + "/" + nameof(ILastAccessedAt.LastAccessedAt),
         name: nameof(ILastAccessedAt.LastAccessedAt),
         client: client,
         asyncGetter: async ct =>
         {
-            var attrOwner = (INfsAttributeOwner)owner;
-            attrOwner.CachedAttributes ??= await client.GetAttrAsync(path, ct);
-            return attrOwner.CachedAttributes.AccessTime.UtcDateTime;
+            owner.CachedAttributes ??= await client.GetAttrAsync(path, ct);
+            return owner.CachedAttributes.AccessTime.UtcDateTime;
         },
         asyncSetter: async (value, ct) =>
         {
@@ -26,6 +25,6 @@ internal sealed class NfsLastAccessedAtProperty(IStorable owner, INfsClient clie
             var newTime = new DateTimeOffset(value.Value, TimeSpan.Zero);
             await client.SetAttrAsync(path, new NfsSetAttributes { AccessTime = newTime }, ct);
 
-            ((INfsAttributeOwner)owner).CachedAttributes = null;
+            owner.CachedAttributes = null;
         }),
     IModifiableLastAccessedAtProperty;

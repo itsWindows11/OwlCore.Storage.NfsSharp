@@ -7,7 +7,7 @@ namespace OwlCore.Storage.NfsSharp;
 /// expose a per-instance attribute cache, avoiding redundant <c>GetAttrAsync</c> network calls
 /// when multiple properties are read or updated on the same item.
 /// </summary>
-internal interface INfsAttributeOwner
+internal interface INfsAttributeOwner : IStorable
 {
     /// <summary>
     /// Gets or sets the cached NFS file attributes for this item.
