@@ -14,8 +14,8 @@ internal sealed class NfsLastAccessedAtOffsetProperty(INfsAttributeOwner owner, 
         client: client,
         asyncGetter: async ct =>
         {
-            owner.CachedAttributes ??= await client.GetAttrAsync(path, ct);
-            return owner.CachedAttributes.AccessTime;
+            owner.Attributes ??= await client.GetAttrAsync(path, ct);
+            return owner.Attributes.AccessTime;
         },
         asyncSetter: async (value, ct) =>
         {
@@ -24,6 +24,6 @@ internal sealed class NfsLastAccessedAtOffsetProperty(INfsAttributeOwner owner, 
 
             await client.SetAttrAsync(path, new NfsSetAttributes { AccessTime = value.Value }, ct);
 
-            owner.CachedAttributes = null;
+            owner.Attributes = null;
         }),
     IModifiableLastAccessedAtOffsetProperty;

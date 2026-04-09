@@ -13,5 +13,5 @@ internal interface INfsAttributeOwner : IStorable
     /// Gets or sets the cached NFS file attributes for this item.
     /// <see langword="null"/> when the attributes have not yet been fetched or have been invalidated.
     /// </summary>
-    NfsFileAttributes? CachedAttributes { get; set; }
+    NfsFileAttributes? Attributes { get; set; }
 }

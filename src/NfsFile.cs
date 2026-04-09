@@ -17,7 +17,7 @@ public partial class NfsFile : IChildFile, ILastModifiedAtOffset, ILastAccessedA
     private ILastAccessedAtOffsetProperty? _lastAccessedAtOffset;
 
     /// <inheritdoc/>
-    NfsFileAttributes? INfsAttributeOwner.CachedAttributes
+    public NfsFileAttributes? Attributes
     {
         get => _cachedAttributes;
         set => _cachedAttributes = value;

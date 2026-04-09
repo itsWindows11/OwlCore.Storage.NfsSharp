@@ -14,8 +14,8 @@ internal sealed class NfsLastModifiedAtProperty(INfsAttributeOwner owner, INfsCl
         client: client,
         asyncGetter: async ct =>
         {
-            owner.CachedAttributes ??= await client.GetAttrAsync(path, ct);
-            return owner.CachedAttributes.ModifyTime.UtcDateTime;
+            owner.Attributes ??= await client.GetAttrAsync(path, ct);
+            return owner.Attributes.ModifyTime.UtcDateTime;
         },
         asyncSetter: async (value, ct) =>
         {
@@ -25,6 +25,6 @@ internal sealed class NfsLastModifiedAtProperty(INfsAttributeOwner owner, INfsCl
             var newTime = new DateTimeOffset(value.Value, TimeSpan.Zero);
             await client.SetAttrAsync(path, new NfsSetAttributes { ModifyTime = newTime }, ct);
 
-            owner.CachedAttributes = null;
+            owner.Attributes = null;
         }),
     IModifiableLastModifiedAtProperty;
